@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Classificador de Animais CNN</title>
+    <title>Avaliação do Modelo CNN</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -11,8 +11,7 @@
             color: #333;
             display: flex;
             justify-content: center;
-            align-items: center;
-            min-height: 100vh;
+            padding: 40px 20px;
             margin: 0;
         }
         .container {
@@ -21,136 +20,115 @@
             border-radius: 10px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             width: 100%;
-            max-width: 400px;
+            max-width: 800px;
             text-align: center;
         }
         h2 { margin-top: 0; color: #2c3e50; }
-        .upload-area {
-            border: 2px dashed #3498db;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            cursor: pointer;
-            transition: 0.3s;
-        }
-        .upload-area:hover { background-color: #f0f8ff; }
-        #imagePreview {
-            max-width: 100%;
-            max-height: 250px;
-            margin-top: 15px;
-            border-radius: 5px;
-            display: none;
-            object-fit: cover;
-        }
+        
         button {
             background-color: #3498db;
             color: white;
             border: none;
-            padding: 12px 20px;
+            padding: 15px 30px;
             font-size: 16px;
             font-weight: bold;
             border-radius: 5px;
             cursor: pointer;
-            width: 100%;
             transition: 0.3s;
+            margin-bottom: 20px;
         }
         button:hover { background-color: #2980b9; }
         button:disabled { background-color: #95a5a6; cursor: not-allowed; }
-        .result-box {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 5px;
-            background-color: #e8f8f5;
-            border: 1px solid #1abc9c;
+        
+        /* Tabela */
+        table {
+            width: 100%;
+            border-collapse: collapse;
             display: none;
+        }
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
             text-align: left;
         }
-        .error-box {
-            background-color: #fadbd8;
-            border: 1px solid #e74c3c;
-            color: #c0392b;
-        }
-        .class-name {
-            font-size: 1.2em;
-            color: #27ae60;
-            font-weight: bold;
-        }
+        th { background-color: #2c3e50; color: white; }
+        tr:hover { background-color: #f5f5f5; }
+        
+        .acertou { color: #27ae60; font-weight: bold; }
+        .errou { color: #e74c3c; font-weight: bold; }
+        
+        #statusInfo { font-size: 1.2em; font-weight: bold; margin-bottom: 20px; color: #7f8c8d; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Classificador de Animais</h2>
+    <h2>Validação do Dataset de Teste</h2>
+    <p style="color: #7f8c8d;">O Node.js irá vasculhar a pasta <b>test</b> e avaliar todas as imagens automaticamente.</p>
     
-    <div class="upload-area" onclick="document.getElementById('fileInput').click()">
-        <p>📸 Clique para selecionar uma imagem</p>
-        <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="previewImage(event)">
-        <img id="imagePreview" alt="Preview da imagem">
-    </div>
+    <button id="startBtn" onclick="runBatchTest()">🚀 Iniciar Teste Automático</button>
 
-    <button id="submitBtn" onclick="sendImage()" disabled>Analisar Imagem</button>
+    <div id="statusInfo"></div>
 
-    <div id="resultBox" class="result-box">
-        <p><strong>Resultado:</strong> <span id="predictedClass" class="class-name"></span></p>
-        <p><strong>Confiança:</strong> <span id="confidence"></span>%</p>
-    </div>
+    <table id="resultsTable">
+        <thead>
+            <tr>
+                <th>Arquivo</th>
+                <th>A IA Previu</th>
+                <th>Confiança</th>
+                <th>Resultado</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
 </div>
 
 <script>
-    let selectedFile = null;
+    async function runBatchTest() {
+        const btn = document.getElementById('startBtn');
+        const statusInfo = document.getElementById('statusInfo');
+        const table = document.getElementById('resultsTable');
+        const tbody = document.getElementById('tableBody');
 
-    function previewImage(event) {
-        const file = event.target.files[0];
-        if (file) {
-            selectedFile = file;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const img = document.getElementById('imagePreview');
-                img.src = e.target.result;
-                img.style.display = 'block';
-            }
-            reader.readAsDataURL(file);
-            document.getElementById('submitBtn').disabled = false;
-            document.getElementById('resultBox').style.display = 'none';
-        }
-    }
-
-    async function sendImage() {
-        if (!selectedFile) return;
-
-        const btn = document.getElementById('submitBtn');
-        const resultBox = document.getElementById('resultBox');
-        
-        btn.innerText = 'Analisando...';
         btn.disabled = true;
-        resultBox.style.display = 'none';
-        resultBox.classList.remove('error-box');
-
-        const formData = new FormData();
-        formData.append('image', selectedFile);
+        btn.innerText = 'Processando no Servidor...';
+        statusInfo.innerText = 'Por favor, aguarde. O Node.js está rodando o PyTorch...';
+        table.style.display = 'none';
+        tbody.innerHTML = '';
 
         try {
-            const response = await fetch('http://localhost:3000/infer', {
-                method: 'POST',
-                body: formData
-            });
-
+            const response = await fetch('http://localhost:3000/test-batch');
             const data = await response.json();
 
             if (data.ok) {
-                document.getElementById('predictedClass').innerText = data.predictedClass.toUpperCase();
-                document.getElementById('confidence').innerText = (data.confidence * 100).toFixed(2);
-                resultBox.style.display = 'block';
+                let acertos = 0;
+
+                data.results.forEach(item => {
+                    const tr = document.createElement('tr');
+                    
+                    const isCorrect = item.realClass === item.predictedClass;
+                    if (isCorrect) acertos++;
+
+                    tr.innerHTML = `
+                        <td>${item.file}</td>
+                        <td style="text-transform: uppercase;">${item.predictedClass}</td>
+                        <td>${(item.confidence * 100).toFixed(1)}%</td>
+                        <td class="${isCorrect ? 'acertou' : 'errou'}">${isCorrect ? '✔ ACERTOU' : '❌ ERROU'}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+                const total = data.results.length;
+                statusInfo.innerHTML = `<span style="color: #27ae60;">Concluído! A IA acertou ${acertos} de ${total} imagens (${((acertos/total)*100).toFixed(1)}%).</span>`;
+                table.style.display = 'table';
             } else {
-                throw new Error(data.error || "Erro desconhecido na API.");
+                throw new Error(data.error);
             }
         } catch (error) {
-            resultBox.classList.add('error-box');
-            resultBox.innerHTML = `<strong>Erro:</strong> ${error.message}<br><small>Verifique se a API está rodando no terminal.</small>`;
-            resultBox.style.display = 'block';
+            statusInfo.innerHTML = `<span style="color: #e74c3c;">Erro: ${error.message}</span>`;
         } finally {
-            btn.innerText = 'Analisar Imagem';
             btn.disabled = false;
+            btn.innerText = 'Rodar Novamente';
         }
     }
 </script>

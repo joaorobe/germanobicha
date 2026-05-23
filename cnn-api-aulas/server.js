@@ -1,5 +1,4 @@
 const express = require("express");
-const cors = require("cors");
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
@@ -10,7 +9,7 @@ const { spawn } = require("child_process");
 
 const PORT = process.env.PORT || 3000;
 const MODEL_PATH = process.env.MODEL_PATH || path.join(__dirname, "models_saved", "model.pth");
-const PYTHON_CMD = process.env.PYTHON_CMD || "python3";
+const PYTHON_CMD = process.env.PYTHON_CMD || path.join(__dirname, ".venv", "Scripts", "python.exe");
 
 const RUNTIME_DIR = path.join(__dirname, ".runtime");
 const UPLOAD_DIR = path.join(RUNTIME_DIR, "uploads");
@@ -47,7 +46,7 @@ class CNN(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(2),
 
-            # Bloco 3
+            # Bloco 3 (Ajuda a extrair padrões mais complexos)
             nn.Conv2d(64, 128, 3, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
@@ -55,11 +54,12 @@ class CNN(nn.Module):
 
             nn.Flatten(),
             
-            # Dropouts e Camadas Densas
+            # Desliga 50% dos neurônios aleatoriamente no treino para evitar overfitting
             nn.Dropout(0.5), 
             nn.Linear(128 * 16 * 16, 128),
             nn.ReLU(),
             
+            # Mais um dropout mais leve
             nn.Dropout(0.3),
             nn.Linear(128, 4)
         )
@@ -69,6 +69,7 @@ class CNN(nn.Module):
 
 def print_json(payload):
     print(json.dumps(payload, ensure_ascii=False), flush=True)
+
 
 def load_model(model_path):
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -101,6 +102,7 @@ def load_model(model_path):
 
     return model, classes, config, device, transform
 
+
 def predict_image(model, classes, device, transform, image_path):
     image = Image.open(image_path).convert("RGB")
     tensor = transform(image).unsqueeze(0).to(device)
@@ -117,11 +119,14 @@ def predict_image(model, classes, device, transform, image_path):
         predicted_class = f"classe_indice_{predicted_index}_sem_nome_no_checkpoint"
 
     top_k = min(3, probabilities.shape[0])
+
     top_values, top_indices = torch.topk(probabilities, k=top_k)
+
     top_predictions = []
 
     for value, index in zip(top_values.tolist(), top_indices.tolist()):
         index = int(index)
+
         if classes and index < len(classes):
             class_name = classes[index]
         else:
@@ -139,6 +144,7 @@ def predict_image(model, classes, device, transform, image_path):
         "confidence": confidence,
         "topPredictions": top_predictions
     }
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -167,6 +173,7 @@ def main():
     for line in sys.stdin:
         try:
             request = json.loads(line)
+
             request_id = request.get("id")
             image_path = request.get("imagePath")
 
@@ -194,6 +201,7 @@ def main():
                 "error": str(e),
                 "traceback": traceback.format_exc()
             })
+
 
 if __name__ == "__main__":
     main()
@@ -233,6 +241,7 @@ function startPythonWorker() {
 
         rl.on("line", (line) => {
             let message;
+
             try {
                 message = JSON.parse(line);
             } catch (error) {
@@ -289,8 +298,10 @@ function startPythonWorker() {
                     clearTimeout(request.timeout);
                     request.reject(new Error("Worker Python foi encerrado."));
                 }
+
                 pendingRequests.clear();
             }
+
             console.error(`Worker Python encerrado com código: ${code}`);
         });
 
@@ -362,7 +373,6 @@ const upload = multer({
 });
 
 async function bootstrap() {
-    app.use(cors());
     console.log("Inicializando API de inferência CNN...");
     console.log(`Modelo esperado em: ${MODEL_PATH}`);
 
@@ -377,6 +387,51 @@ async function bootstrap() {
     }
 
     const app = express();
+    app.use(express.static(path.join(__dirname, "frontend")));
+    app.get("/test-batch", async (req, res) => {
+        const testDir = path.join(__dirname, "..", "cnn-treinamento", "datasets", "animals", "test");
+        
+        if (!fs.existsSync(testDir)) {
+            return res.status(400).json({ 
+                ok: false, 
+                error: "Pasta de teste não encontrada no caminho: " + testDir 
+            });
+        }
+
+        const results = [];
+        try {
+            const classes = fs.readdirSync(testDir); 
+
+            for (const className of classes) {
+                const classPath = path.join(testDir, className);
+                
+                if (fs.statSync(classPath).isDirectory()) {
+                    const images = fs.readdirSync(classPath);
+                    
+                    for (const image of images) {
+                        const imagePath = path.join(classPath, image);
+
+                        if (image.match(/\.(jpg|jpeg|png|webp|bmp)$/i)) {
+                            const result = await runInference(imagePath);
+                            
+                            results.push({
+                                file: `${className}/${image}`,
+                                realClass: className, 
+                                predictedClass: result.predictedClass,
+                                confidence: result.confidence
+                            });
+                        }
+                    }
+                }
+            }
+            return res.json({ ok: true, results });
+            
+        } catch (error) {
+            console.error("Erro no batch:", error);
+            return res.status(500).json({ ok: false, error: error.message });
+        }
+    });
+
 
     app.post("/infer", upload.single("image"), async (req, res) => {
         if (!req.file) {
