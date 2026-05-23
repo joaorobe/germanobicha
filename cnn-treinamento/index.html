@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classificador de Animais CNN</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        h2 { margin-top: 0; color: #2c3e50; }
+        .upload-area {
+            border: 2px dashed #3498db;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .upload-area:hover { background-color: #f0f8ff; }
+        #imagePreview {
+            max-width: 100%;
+            max-height: 250px;
+            margin-top: 15px;
+            border-radius: 5px;
+            display: none;
+            object-fit: cover;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            transition: 0.3s;
+        }
+        button:hover { background-color: #2980b9; }
+        button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        .result-box {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            background-color: #e8f8f5;
+            border: 1px solid #1abc9c;
+            display: none;
+            text-align: left;
+        }
+        .error-box {
+            background-color: #fadbd8;
+            border: 1px solid #e74c3c;
+            color: #c0392b;
+        }
+        .class-name {
+            font-size: 1.2em;
+            color: #27ae60;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Classificador de Animais</h2>
+    
+    <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+        <p>📸 Clique para selecionar uma imagem</p>
+        <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="previewImage(event)">
+        <img id="imagePreview" alt="Preview da imagem">
+    </div>
+
+    <button id="submitBtn" onclick="sendImage()" disabled>Analisar Imagem</button>
+
+    <div id="resultBox" class="result-box">
+        <p><strong>Resultado:</strong> <span id="predictedClass" class="class-name"></span></p>
+        <p><strong>Confiança:</strong> <span id="confidence"></span>%</p>
+    </div>
+</div>
+
+<script>
+    let selectedFile = null;
+
+    function previewImage(event) {
+        const file = event.target.files[0];
+        if (file) {
+            selectedFile = file;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = document.getElementById('imagePreview');
+                img.src = e.target.result;
+                img.style.display = 'block';
+            }
+            reader.readAsDataURL(file);
+            document.getElementById('submitBtn').disabled = false;
+            document.getElementById('resultBox').style.display = 'none';
+        }
+    }
+
+    async function sendImage() {
+        if (!selectedFile) return;
+
+        const btn = document.getElementById('submitBtn');
+        const resultBox = document.getElementById('resultBox');
+        
+        btn.innerText = 'Analisando...';
+        btn.disabled = true;
+        resultBox.style.display = 'none';
+        resultBox.classList.remove('error-box');
+
+        const formData = new FormData();
+        formData.append('image', selectedFile);
+
+        try {
+            const response = await fetch('http://localhost:3000/infer', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.ok) {
+                document.getElementById('predictedClass').innerText = data.predictedClass.toUpperCase();
+                document.getElementById('confidence').innerText = (data.confidence * 100).toFixed(2);
+                resultBox.style.display = 'block';
+            } else {
+                throw new Error(data.error || "Erro desconhecido na API.");
+            }
+        } catch (error) {
+            resultBox.classList.add('error-box');
+            resultBox.innerHTML = `<strong>Erro:</strong> ${error.message}<br><small>Verifique se a API está rodando no terminal.</small>`;
+            resultBox.style.display = 'block';
+        } finally {
+            btn.innerText = 'Analisar Imagem';
+            btn.disabled = false;
+        }
+    }
+</script>
+
+</body>
+</html>

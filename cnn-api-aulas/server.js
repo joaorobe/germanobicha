@@ -1,4 +1,5 @@
 const express = require("express");
+const cors = require("cors");
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
@@ -361,6 +362,7 @@ const upload = multer({
 });
 
 async function bootstrap() {
+    app.use(cors());
     console.log("Inicializando API de inferência CNN...");
     console.log(`Modelo esperado em: ${MODEL_PATH}`);
 
